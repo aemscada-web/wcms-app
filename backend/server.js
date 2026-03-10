@@ -65,6 +65,18 @@ app.use(`${API_VERSION}/withdrawals`, withdrawalRoutes);
 app.use(`${API_VERSION}/committees`, committeeRoutes);
 app.use(`${API_VERSION}/reports`, reportRoutes);
 
+// serve frontend static files when build exists
+const path = require('path');
+const frontendDist = path.join(__dirname, '../frontend/dist');
+if (process.env.NODE_ENV === 'production' || true) {
+    app.use(express.static(frontendDist));
+    // catchall - send index.html for any non-API route
+    app.get('*', (req, res, next) => {
+        if (req.path.startsWith(API_VERSION)) return next();
+        res.sendFile(path.join(frontendDist, 'index.html'));
+    });
+}
+
 // 404 handler
 app.use((req, res) => {
     res.status(404).json({

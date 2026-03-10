@@ -189,6 +189,12 @@ exports.forwardToCEC = async (req, res) => {
             query += ' AND committee_id = ?';
             params.push(committee_id);
         } else if (req.user.role.startsWith('ZEC_')) {
+            if (!req.user.committee_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'User is missing committee information for forwarding'
+                });
+            }
             query += ' AND committee_id = ?';
             params.push(req.user.committee_id);
         }

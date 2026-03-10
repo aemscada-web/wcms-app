@@ -1,6 +1,6 @@
 // src/pages/Deductions.jsx
 import { useEffect, useState } from 'react';
-import { deductionsAPI, committeesAPI } from '../services/api';
+import { deductionsAPI, committeesAPI, membersAPI } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import { toast } from 'react-toastify';
 import {
@@ -18,8 +18,19 @@ export default function Deductions() {
   const [statusFilter, setStatusFilter] = useState('');
   const [selectedDeductions, setSelectedDeductions] = useState([]);
 
+  // --- new state for manual entry modal ---
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [membersList, setMembersList] = useState([]);
+  const [formData, setFormData] = useState({
+    member_id: '',
+    deduction_month: '',
+    deduction_amount: '',
+    remarks: ''
+  });
+
   useEffect(() => {
     fetchDeductions();
+    fetchMembers();
   }, []);
 
   const fetchDeductions = async () => {
@@ -35,6 +46,53 @@ export default function Deductions() {
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMembers = async () => {
+    try {
+      const response = await membersAPI.getAll();
+      setMembersList(response.data.data);
+    } catch (error) {
+      console.error('Failed to load members for deduction entry', error);
+    }
+  };
+
+  const handleAddDeduction = () => {
+    setFormData({
+      member_id: '',
+      deduction_month: '',
+      deduction_amount: '',
+      remarks: ''
+    });
+    setShowAddModal(true);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      // ensure month has a day component (YYYY-MM-01)
+      const payload = { ...formData };
+      if (payload.deduction_month && payload.deduction_month.length === 7) {
+        payload.deduction_month = payload.deduction_month + '-01';
+      }
+
+      await deductionsAPI.create(payload);
+      toast.success('Deduction entered successfully');
+      setShowAddModal(false);
+      fetchDeductions();
+    } catch (error) {
+      console.error('Deduction entry error:', error.response?.data || error.message);
+      const errMsg = error.response?.data?.message || 'Failed to enter deduction';
+      toast.error(errMsg);
     }
   };
 
@@ -57,15 +115,25 @@ export default function Deductions() {
 
   const handleForward = async () => {
     try {
-      const month = prompt('Enter month (YYYY-MM-DD):');
-      if (!month) return;
+      let month = prompt('Enter deduction month (YYYY-MM or YYYY-MM-DD):');
+      // if user cancels or leaves blank, try filter value
+      if (!month) {
+        if (!monthFilter) return;
+        month = monthFilter;
+      }
 
-      await deductionsAPI.forward({ deduction_month: month });
-      toast.success('Deductions forwarded to CEC successfully');
+      // normalize to include day component if missing
+      if (/^\d{4}-\d{2}$/.test(month)) {
+        month = month + '-01';
+      }
+
+      const response = await deductionsAPI.forward({ deduction_month: month });
+      toast.success(response.data?.message || 'Deductions forwarded to CEC successfully');
       fetchDeductions();
     } catch (error) {
-      toast.error('Failed to forward deductions');
-      console.error(error);
+      const errMsg = error.response?.data?.message || 'Failed to forward deductions';
+      toast.error(errMsg);
+      console.error('Forward error:', error.response?.data || error.message);
     }
   };
 
@@ -130,7 +198,10 @@ export default function Deductions() {
               onChange={handleFileUpload}
             />
           </label>
-          <button className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700">
+          <button
+            onClick={handleAddDeduction}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700"
+          >
             <PlusIcon className="h-5 w-5 mr-2" />
             Enter Deduction
           </button>
@@ -310,6 +381,89 @@ export default function Deductions() {
       </div>
 
       <div className="mt-4 text-sm text-gray-500">Total Deductions: {deductions.length}</div>
+
+      {/* Add Deduction Modal */}
+      {showAddModal && (
+        <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+          <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white max-h-96 overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Enter Deduction</h3>
+              <button onClick={() => setShowAddModal(false)} className="text-gray-400 hover:text-gray-500">
+                <span className="text-2xl">&times;</span>
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Member</label>
+                <select
+                  name="member_id"
+                  value={formData.member_id}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  required
+                >
+                  <option value="">Select Member</option>
+                  {membersList.map((m) => (
+                    <option key={m.member_id} value={m.member_id}>
+                      {m.full_name} ({m.member_code})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Month</label>
+                <input
+                  type="month"
+                  name="deduction_month"
+                  value={formData.deduction_month}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Amount</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  name="deduction_amount"
+                  value={formData.deduction_amount}
+                  onChange={handleInputChange}
+                  placeholder="Enter amount"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Remarks</label>
+                <textarea
+                  name="remarks"
+                  value={formData.remarks}
+                  onChange={handleInputChange}
+                  placeholder="Optional remarks"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  rows={3}
+                />
+              </div>
+              <div className="flex justify-end space-x-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowAddModal(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700"
+                >
+                  Save Deduction
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -128,6 +128,24 @@ git clone <repository-url>
 cd wcms-app
 ```
 
+> 🧩 **Monorepo note:** both frontend and backend live in the same GitHub repository.  A root-level `package.json` is provided with helper scripts that run commands in the sub‑folders.
+
+```bash
+# install dependencies for both sides (runs backend then frontend install)
+npm install
+
+# build frontend and copy output to backend when preparing for production
+npm run build
+
+# start backend server only (static files already served from build directory)
+npm start
+
+# during development you can launch both servers concurrently
+npm run dev
+```
+
+The individual `frontend/` and `backend/` folders still have their own `package.json` files if you prefer to work inside a specific subproject.
+
 #### 2. Database Setup
 
 ```bash
